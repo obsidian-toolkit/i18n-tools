@@ -3,7 +3,7 @@
     "publishConfig": {
         "access": "public"
     },
-    "version": "0.0.2",
+    "version": "0.0.4",
     "scripts": {
         "build": "tsc"
     },
@@ -41,7 +41,7 @@
         "ts-morph": "^26.0.0",
         "tsx": "^4.20.3"
     },
-  "bin": {
-    "i18n-tools": "./dist/index.js"
-  }
+    "bin": {
+        "i18n-tools": "tsx ./src/index.ts"
+    }
 }
