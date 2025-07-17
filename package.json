@@ -28,7 +28,6 @@
         "@inquirer/prompts": "^7.5.3",
         "@trivago/prettier-plugin-sort-imports": "^5.2.2",
         "@types/ink": "^2.0.3",
-        "react": "^19.1.0",
         "@types/node": "^24.0.4",
         "chalk": "^5.4.1",
         "cli-highlight": "^2.1.11",
@@ -40,6 +39,7 @@
         "lodash.merge": "^4.6.2",
         "pkgroll": "^2.14.3",
         "prettier": "^3.6.2",
+        "react": "^19.1.0",
         "ts-morph": "^26.0.0",
         "tsx": "^4.20.3"
     },
