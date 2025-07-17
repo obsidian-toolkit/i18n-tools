@@ -53,7 +53,7 @@ const Locale: ${locale !== 'en' ? 'DeepPartial<LocaleSchema>' : 'LocaleSchema'} 
 export default Locale;`;
 
         writeFileSync(tsPath, tsContent);
-        render(<Success message={`✅ Generated ${tsPath}`} />);
+        await render(<Success message={`✅ Generated ${tsPath}`} />).waitUntilExit();
 
         if (locale === 'en') {
             await generateSchemaFromNest(nested);

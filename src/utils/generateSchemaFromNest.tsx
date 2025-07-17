@@ -59,7 +59,7 @@ ${types}
 `.trim();
 
         writeFileSync(SCHEMA_FILE, typesContent);
-        render(<Success message={`✅ Generated ${SCHEMA_FILE}`} />);
+        await render(<Success message={`✅ Generated ${SCHEMA_FILE}`} />).waitUntilExit();
     } catch (error) {
         render(<Error message={'❌ Error generating types:'} />);
     }

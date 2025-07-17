@@ -1484,7 +1484,7 @@ async function generateSchemaFromNest(nested) {
 ${types}
 `.trim();
     writeFileSync(SCHEMA_FILE, typesContent);
-    render(/* @__PURE__ */ jsx(Success, { message: `\u2705 Generated ${SCHEMA_FILE}` }));
+    await render(/* @__PURE__ */ jsx(Success, { message: `\u2705 Generated ${SCHEMA_FILE}` })).waitUntilExit();
   } catch (error) {
     render(/* @__PURE__ */ jsx(Error$1, { message: "\u274C Error generating types:" }));
   }
@@ -1525,7 +1525,7 @@ const Locale: ${locale !== "en" ? "DeepPartial<LocaleSchema>" : "LocaleSchema"} 
 
 export default Locale;`;
     writeFileSync(tsPath, tsContent);
-    render(/* @__PURE__ */ jsx(Success, { message: `\u2705 Generated ${tsPath}` }));
+    await render(/* @__PURE__ */ jsx(Success, { message: `\u2705 Generated ${tsPath}` })).waitUntilExit();
     if (locale === "en") {
       await generateSchemaFromNest(nested);
     }
