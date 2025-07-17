@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 
+import { analyzeKeys } from './commands/analyze-keys/analyze-keys';
 import { checkAllLocales } from './commands/check-locales/checkAllLocales';
 import { checkOneLocale } from './commands/check-locales/checkOneLocale';
 import { flat } from './commands/flat';
 import { init } from './commands/init';
-import { keysStats } from './commands/keyStats/keys-stats';
 import { nest } from './commands/nest';
 import { sync } from './commands/sync';
 import { template } from './commands/template';
@@ -60,11 +60,11 @@ program
     .action(checkAllLocales);
 
 program
-    .command('keys-stats')
+    .command('analyze-keys')
     .description(
         'Show detailed statistics of translation keys across locales, including total, missing, and unused keys'
     )
-    .action(keysStats);
+    .action(analyzeKeys);
 
 program
     .command('sync')

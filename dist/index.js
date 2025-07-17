@@ -1,567 +1,23 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
-import { jsxs, jsx } from 'react/jsx-runtime';
-import { Box, Text, render, useApp, useInput } from 'ink';
-import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from 'fs';
-import { from, concat } from 'ix/iterable';
-import { filter, map, flatMap, tap } from 'ix/iterable/operators';
-import path, { join, basename } from 'path';
-import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
+import { jsx, jsxs } from 'react/jsx-runtime';
+import React, { useCallback, useRef, useState, useEffect, useMemo } from 'react';
 import highlight from 'cli-highlight';
+import { render, useApp, useInput, Box, Text } from 'ink';
+import { existsSync, readFileSync, writeFileSync, readdirSync, mkdirSync } from 'fs';
 import { glob } from 'glob';
+import { from, concat } from 'ix/iterable';
+import { flatMap, filter, map, tap } from 'ix/iterable/operators';
+import path, { join, basename, dirname } from 'path';
 import { exit } from 'process';
 import { Project, ModuleKind, ScriptTarget, SyntaxKind } from 'ts-morph';
 import chalk from 'chalk';
 import path$1 from 'node:path';
 
-const AllLocalesView = ({ data }) => {
-  const { locales, enFlat } = data;
-  const totalKeys = Object.keys(enFlat).length;
-  const sortedLocales = [...locales].sort(
-    (a, b) => b.percentage - a.percentage
-  );
-  return /* @__PURE__ */ jsxs(Box, { flexDirection: "column", children: [
-    /* @__PURE__ */ jsx(Text, { children: "\u{1F4CA} Translation Progress Summary:" }),
-    /* @__PURE__ */ jsxs(Text, { color: "green", children: [
-      " ",
-      "English: ",
-      totalKeys,
-      "/",
-      totalKeys,
-      " (100%) \u2705"
-    ] }),
-    sortedLocales.map((locale) => {
-      const statusIcon = locale.percentage >= 80 ? "\u2705" : locale.percentage >= 50 ? "\u{1F7E1}" : "\u{1F534}";
-      const padding = " ".repeat(
-        Math.max(0, 8 - locale.locale.length)
-      );
-      const issues = [];
-      if (locale.missing.length > 0)
-        issues.push(`${locale.missing.length} missing`);
-      if (locale.untranslated.length > 0)
-        issues.push(`${locale.untranslated.length} untranslated`);
-      const issuesNote = issues.length > 0 ? ` (${issues.join(", ")})` : "";
-      return /* @__PURE__ */ jsx(Text, { children: `  ${locale.locale}:${padding}${locale.completed}/${totalKeys} (${locale.percentage}%) ${statusIcon}${issuesNote}` }, locale.locale);
-    }),
-    /* @__PURE__ */ jsxs(Box, { flexDirection: "column", children: [
-      /* @__PURE__ */ jsx(Text, { children: "\u{1F4CA} Translation Stats:" }),
-      /* @__PURE__ */ jsx(Text, { children: "\u2550".repeat(40) })
-    ] }),
-    sortedLocales.map((locale) => /* @__PURE__ */ jsx(
-      LocaleDetailView,
-      {
-        locale,
-        totalKeys,
-        enFlat
-      },
-      locale.locale
-    ))
-  ] });
-};
-const LocaleDetailView = ({
-  locale,
-  totalKeys,
-  enFlat
-}) => {
-  const statusIcon = locale.percentage >= 80 ? "\u2705" : locale.percentage >= 50 ? "\u{1F7E1}" : "\u{1F534}";
-  return /* @__PURE__ */ jsxs(
-    Box,
-    {
-      flexDirection: "column",
-      marginBottom: 1,
-      children: [
-        /* @__PURE__ */ jsxs(Text, { children: [
-          statusIcon,
-          " Locale ",
-          locale.locale,
-          ": ",
-          locale.completed,
-          "/",
-          totalKeys,
-          " keys (",
-          locale.percentage,
-          "%) ",
-          statusIcon
-        ] }),
-        locale.missing.length > 0 && /* @__PURE__ */ jsxs(
-          Box,
-          {
-            flexDirection: "column",
-            marginLeft: 2,
-            children: [
-              /* @__PURE__ */ jsxs(Text, { color: "red", children: [
-                "\u274C Missing keys (",
-                locale.missing.length,
-                "):"
-              ] }),
-              /* @__PURE__ */ jsx(MissingKeysView, { missing: locale.missing })
-            ]
-          }
-        ),
-        locale.untranslated.length > 0 && /* @__PURE__ */ jsxs(
-          Box,
-          {
-            flexDirection: "column",
-            marginLeft: 2,
-            children: [
-              /* @__PURE__ */ jsxs(Text, { color: "yellow", children: [
-                "\u{1F504} Untranslated values (",
-                locale.untranslated.length,
-                "):"
-              ] }),
-              locale.untranslated.slice(0, 5).map(([key]) => /* @__PURE__ */ jsxs(
-                Text,
-                {
-                  color: "gray",
-                  children: [
-                    " ",
-                    "- ",
-                    key,
-                    ': "',
-                    enFlat[key],
-                    '"'
-                  ]
-                },
-                key
-              )),
-              locale.untranslated.length > 5 && /* @__PURE__ */ jsxs(Text, { color: "gray", children: [
-                " ",
-                "... and ",
-                locale.untranslated.length - 5,
-                " more"
-              ] })
-            ]
-          }
-        ),
-        locale.extra.length > 0 && /* @__PURE__ */ jsxs(
-          Box,
-          {
-            flexDirection: "column",
-            marginLeft: 2,
-            children: [
-              /* @__PURE__ */ jsxs(Text, { color: "cyan", children: [
-                "\u26A0\uFE0F Extra keys (",
-                locale.extra.length,
-                "):"
-              ] }),
-              /* @__PURE__ */ jsxs(Text, { color: "gray", children: [
-                " ",
-                locale.extra.map(([k]) => k).join(", ")
-              ] })
-            ]
-          }
-        )
-      ]
-    }
-  );
-};
-const MissingKeysView = ({
-  missing
-}) => {
-  const keysBySection = /* @__PURE__ */ new Map();
-  missing.forEach(([key]) => {
-    const section = key.split(".").slice(0, 2).join(".");
-    if (!keysBySection.has(section)) {
-      keysBySection.set(section, []);
-    }
-    keysBySection.get(section).push(key);
-  });
-  return /* @__PURE__ */ jsx(Box, { flexDirection: "column", children: Array.from(keysBySection.entries()).map(([section, keys]) => {
-    if (keys.length === 1) {
-      return /* @__PURE__ */ jsxs(
-        Text,
-        {
-          color: "gray",
-          children: [
-            " ",
-            "- ",
-            keys[0]
-          ]
-        },
-        section
-      );
-    } else if (keys.length <= 3) {
-      return /* @__PURE__ */ jsx(
-        Box,
-        {
-          flexDirection: "column",
-          children: keys.map((key) => /* @__PURE__ */ jsxs(
-            Text,
-            {
-              color: "gray",
-              children: [
-                " ",
-                "- ",
-                key
-              ]
-            },
-            key
-          ))
-        },
-        section
-      );
-    } else {
-      return /* @__PURE__ */ jsxs(
-        Box,
-        {
-          flexDirection: "column",
-          children: [
-            /* @__PURE__ */ jsxs(Text, { color: "gray", children: [
-              " ",
-              "- ",
-              section,
-              ".* (",
-              keys.length,
-              " keys missing)"
-            ] }),
-            /* @__PURE__ */ jsxs(Text, { color: "gray", children: [
-              " ",
-              "Examples:",
-              " ",
-              keys.slice(0, 2).map((k) => k.split(".").pop()).join(", "),
-              "..."
-            ] })
-          ]
-        },
-        section
-      );
-    }
-  }) });
-};
-
 const LANG_DIR = "./src/lang";
 const LOCALE_DIR = join(LANG_DIR, "locale");
 const TYPES_DIR = join(LANG_DIR, "types");
 const SCHEMA_FILE = join(TYPES_DIR, "interfaces.ts");
-
-async function getLocaleStats(locale, enFlat) {
-  const localeDir = join(LOCALE_DIR, locale);
-  const jsonPath = join(localeDir, "flat.json");
-  if (!existsSync(jsonPath)) {
-    console.warn(`\u26A0\uFE0F Warning: ${jsonPath} not found
-`);
-    process.exit(1);
-  }
-  const enMap = new Map(Object.entries(enFlat));
-  const totalKeys = enMap.size;
-  try {
-    const localeFlatData = JSON.parse(
-      readFileSync(jsonPath, "utf8")
-    );
-    const localeFlatMap = new Map(Object.entries(localeFlatData));
-    const missingData = Array.from(enMap).filter(
-      ([key, _]) => !localeFlatMap.has(key)
-    );
-    const extraData = Array.from(localeFlatMap).filter(
-      ([key, _]) => !enMap.has(key)
-    );
-    const localeActualMap = Array.from(localeFlatMap).filter(
-      ([key, _]) => enMap.has(key)
-    );
-    const untranslatedEntries = Array.from(localeActualMap).filter(
-      ([key, value]) => value === enFlat[key] || [value, enFlat[key]].every(Array.isArray) && JSON.stringify(value) === JSON.stringify(enFlat[key])
-    );
-    const completed = totalKeys - missingData.length - untranslatedEntries.length;
-    const percentage = Math.round(completed / totalKeys * 100 * 10) / 10;
-    return {
-      locale,
-      completed,
-      missing: missingData,
-      extra: extraData,
-      untranslated: untranslatedEntries,
-      percentage
-    };
-  } catch (error) {
-    console.error(`\u274C Error validating ${jsonPath}:`, error);
-    process.exit(1);
-  }
-}
-
-async function getData(locale) {
-  const enFlatPath = join(LOCALE_DIR, "en", "flat.json");
-  if (!existsSync(enFlatPath)) {
-    console.error("\u274C Error: en/flat.json not found");
-    process.exit(1);
-  }
-  const enFlat = JSON.parse(
-    readFileSync(enFlatPath, "utf8")
-  );
-  const enMap = new Map(Object.entries(enFlat));
-  enMap.size;
-  const locales = locale ? from([locale]) : from(readdirSync(LOCALE_DIR, { withFileTypes: true })).pipe(
-    filter((dirent) => dirent.isDirectory() && dirent.name !== "en"),
-    map((dirent) => dirent.name)
-  );
-  const results = { locales: [], enFlat };
-  for (const locale2 of locales) {
-    const stat = await getLocaleStats(locale2, enFlat);
-    results.locales.push(stat);
-  }
-  return results;
-}
-
-async function checkAllLocales() {
-  const data = await getData();
-  render(/* @__PURE__ */ jsx(AllLocalesView, { data }));
-}
-
-const LocaleView = ({ data }) => {
-  const { locales, enFlat } = data;
-  const totalKeys = Object.keys(enFlat).length;
-  if (locales.length === 0) {
-    return /* @__PURE__ */ jsx(Text, { color: "red", children: "\u274C No locale data found" });
-  }
-  const locale = locales[0];
-  const statusIcon = locale.percentage >= 80 ? "\u2705" : locale.percentage >= 50 ? "\u{1F7E1}" : "\u{1F534}";
-  return /* @__PURE__ */ jsxs(Box, { flexDirection: "column", children: [
-    /* @__PURE__ */ jsxs(Text, { children: [
-      statusIcon,
-      " Locale ",
-      locale.locale,
-      ": ",
-      locale.completed,
-      "/",
-      totalKeys,
-      " keys (",
-      locale.percentage,
-      "%) ",
-      statusIcon
-    ] }),
-    locale.missing.length > 0 && /* @__PURE__ */ jsxs(
-      Box,
-      {
-        flexDirection: "column",
-        marginTop: 1,
-        children: [
-          /* @__PURE__ */ jsxs(Text, { color: "red", children: [
-            "\u274C Missing keys (",
-            locale.missing.length,
-            "):"
-          ] }),
-          locale.missing.slice(0, 10).map(([key]) => /* @__PURE__ */ jsxs(
-            Text,
-            {
-              color: "gray",
-              children: [
-                " ",
-                "- ",
-                key
-              ]
-            },
-            key
-          )),
-          locale.missing.length > 10 && /* @__PURE__ */ jsxs(Text, { color: "gray", children: [
-            " ",
-            "... and ",
-            locale.missing.length - 10,
-            " more"
-          ] })
-        ]
-      }
-    ),
-    locale.untranslated.length > 0 && /* @__PURE__ */ jsxs(
-      Box,
-      {
-        flexDirection: "column",
-        marginTop: 1,
-        children: [
-          /* @__PURE__ */ jsxs(Text, { color: "yellow", children: [
-            "\u{1F504} Untranslated values (",
-            locale.untranslated.length,
-            "):"
-          ] }),
-          locale.untranslated.slice(0, 5).map(([key]) => /* @__PURE__ */ jsxs(
-            Text,
-            {
-              color: "gray",
-              children: [
-                " ",
-                "- ",
-                key,
-                ': "',
-                enFlat[key],
-                '"'
-              ]
-            },
-            key
-          )),
-          locale.untranslated.length > 5 && /* @__PURE__ */ jsxs(Text, { color: "gray", children: [
-            " ",
-            "... and ",
-            locale.untranslated.length - 5,
-            " more"
-          ] })
-        ]
-      }
-    ),
-    locale.extra.length > 0 && /* @__PURE__ */ jsxs(
-      Box,
-      {
-        flexDirection: "column",
-        marginTop: 1,
-        children: [
-          /* @__PURE__ */ jsxs(Text, { color: "cyan", children: [
-            "\u26A0\uFE0F Extra keys (",
-            locale.extra.length,
-            "):"
-          ] }),
-          /* @__PURE__ */ jsxs(Text, { color: "gray", children: [
-            " ",
-            locale.extra.map(([k]) => k).join(", ")
-          ] })
-        ]
-      }
-    ),
-    /* @__PURE__ */ jsx(Box, { marginTop: 1, children: /* @__PURE__ */ jsxs(Text, { children: [
-      "\u{1F4CA} Summary: ",
-      locale.locale,
-      ": ",
-      locale.completed,
-      "/",
-      totalKeys,
-      " ",
-      "(",
-      locale.percentage,
-      "%)"
-    ] }) })
-  ] });
-};
-
-async function checkOneLocale(locale = "ru") {
-  const data = await getData(locale);
-  render(/* @__PURE__ */ jsx(LocaleView, { data }));
-}
-
-const Error$1 = ({ message, exitApp = true }) => {
-  const { exit: closeApp } = useApp();
-  const exit = useCallback(() => {
-    process.exit(1);
-    closeApp();
-  }, []);
-  useEffect(() => {
-    if (exitApp) {
-      setTimeout(() => exit(), 100);
-    }
-  }, [exit, exitApp]);
-  return /* @__PURE__ */ jsxs(Text, { color: "red", children: [
-    "ERROR: ",
-    message
-  ] });
-};
-
-const Success = ({ message }) => {
-  const lines = Array.isArray(message) ? message : [message];
-  return /* @__PURE__ */ jsx(Box, { flexDirection: "column", children: lines.map((line, index) => /* @__PURE__ */ jsxs(
-    Text,
-    {
-      color: "green",
-      children: [
-        index === 0 ? "SUCCESS: " : "",
-        line
-      ]
-    },
-    index
-  )) });
-};
-
-async function getObjectFromTs(tsPath) {
-  const content = readFileSync(tsPath, "utf8");
-  const objectRegex = /const\s+\w+\s*:\s*[^=]+=\s*(\{[\s\S]*?\});/;
-  const match = content.match(objectRegex);
-  if (!match) {
-    throw new Error(`Object declaration not found in: ${tsPath}`);
-  }
-  try {
-    const objectString = match[1];
-    return eval(`(${objectString})`);
-  } catch (err) {
-    throw new Error(`Failed to parse object: ${err.message}`);
-  }
-}
-
-function nestToFlat(nested) {
-  const result = {};
-  function traverse(obj, path = "") {
-    for (const [key, value] of Object.entries(obj)) {
-      const currentPath = path ? `${path}.${key}` : key;
-      if (Array.isArray(value)) {
-        result[currentPath] = value;
-      } else if (typeof value === "object" && value !== null) {
-        traverse(value, currentPath);
-      } else if (typeof value === "string") {
-        result[currentPath] = value;
-      }
-    }
-  }
-  traverse(nested);
-  return result;
-}
-
-function sortObjectKeys(obj) {
-  if (Array.isArray(obj)) {
-    return obj;
-  }
-  if (obj !== null && typeof obj === "object") {
-    const sorted = {};
-    Object.keys(obj).sort().forEach((key) => {
-      sorted[key] = sortObjectKeys(obj[key]);
-    });
-    return sorted;
-  }
-  return obj;
-}
-
-async function flat(locale) {
-  const tsPath = join(LOCALE_DIR, `${locale}/index.ts`);
-  const jsonPath = join(LOCALE_DIR, `${locale}/flat.json`);
-  if (!existsSync(tsPath)) {
-    await render(/* @__PURE__ */ jsx(Error$1, { message: `${tsPath} not found` })).waitUntilExit();
-  }
-  try {
-    const nested = await getObjectFromTs(tsPath);
-    const sortedFlat = sortObjectKeys(nestToFlat(nested));
-    writeFileSync(jsonPath, JSON.stringify(sortedFlat, null, 4));
-    render(/* @__PURE__ */ jsx(Success, { message: `Generated ${jsonPath}` }));
-  } catch (error) {
-    render(
-      /* @__PURE__ */ jsx(Error$1, { message: `Failed to process ${locale}: ${error.message}` })
-    );
-  }
-}
-
-function init() {
-  if (!existsSync(LANG_DIR)) {
-    mkdirSync(LANG_DIR, { recursive: true });
-  }
-  if (!existsSync(TYPES_DIR)) {
-    mkdirSync(TYPES_DIR, { recursive: true });
-  }
-  if (!existsSync(LOCALE_DIR)) {
-    mkdirSync(LOCALE_DIR, { recursive: true });
-    mkdirSync(join(LOCALE_DIR, "en"));
-    writeFileSync(join(LOCALE_DIR, "en", "flat.json"), "");
-  }
-  if (!existsSync(SCHEMA_FILE)) {
-    const interfaceContent = ``;
-    writeFileSync(SCHEMA_FILE, interfaceContent);
-  }
-  render(
-    /* @__PURE__ */ jsx(
-      Success,
-      {
-        message: [
-          "Lang structure created successfully:",
-          "  ./src/lang/",
-          "  \u251C\u2500\u2500 types/",
-          "  \u2502   \u2514\u2500\u2500 interfaces.ts",
-          "  \u2514\u2500\u2500 locale/",
-          "      \u2514\u2500\u2500 en/",
-          "          \u2514\u2500\u2500 flat.json"
-        ]
-      }
-    )
-  );
-}
 
 class LocaleTransaction {
   localePaths = /* @__PURE__ */ new Map();
@@ -1424,8 +880,552 @@ function showStatsMenu() {
   render(/* @__PURE__ */ jsx(App, {}), { exitOnCtrlC: false });
 }
 
-async function keysStats() {
+async function analyzeKeys() {
   showStatsMenu();
+}
+
+const AllLocalesView = ({ data }) => {
+  const { locales, enFlat } = data;
+  const totalKeys = Object.keys(enFlat).length;
+  const sortedLocales = [...locales].sort(
+    (a, b) => b.percentage - a.percentage
+  );
+  return /* @__PURE__ */ jsxs(Box, { flexDirection: "column", children: [
+    /* @__PURE__ */ jsx(Text, { children: "\u{1F4CA} Translation Progress Summary:" }),
+    /* @__PURE__ */ jsxs(Text, { color: "green", children: [
+      " ",
+      "English: ",
+      totalKeys,
+      "/",
+      totalKeys,
+      " (100%) \u2705"
+    ] }),
+    sortedLocales.map((locale) => {
+      const statusIcon = locale.percentage >= 80 ? "\u2705" : locale.percentage >= 50 ? "\u{1F7E1}" : "\u{1F534}";
+      const padding = " ".repeat(
+        Math.max(0, 8 - locale.locale.length)
+      );
+      const issues = [];
+      if (locale.missing.length > 0)
+        issues.push(`${locale.missing.length} missing`);
+      if (locale.untranslated.length > 0)
+        issues.push(`${locale.untranslated.length} untranslated`);
+      const issuesNote = issues.length > 0 ? ` (${issues.join(", ")})` : "";
+      return /* @__PURE__ */ jsx(Text, { children: `  ${locale.locale}:${padding}${locale.completed}/${totalKeys} (${locale.percentage}%) ${statusIcon}${issuesNote}` }, locale.locale);
+    }),
+    /* @__PURE__ */ jsxs(Box, { flexDirection: "column", children: [
+      /* @__PURE__ */ jsx(Text, { children: "\u{1F4CA} Translation Stats:" }),
+      /* @__PURE__ */ jsx(Text, { children: "\u2550".repeat(40) })
+    ] }),
+    sortedLocales.map((locale) => /* @__PURE__ */ jsx(
+      LocaleDetailView,
+      {
+        locale,
+        totalKeys,
+        enFlat
+      },
+      locale.locale
+    ))
+  ] });
+};
+const LocaleDetailView = ({
+  locale,
+  totalKeys,
+  enFlat
+}) => {
+  const statusIcon = locale.percentage >= 80 ? "\u2705" : locale.percentage >= 50 ? "\u{1F7E1}" : "\u{1F534}";
+  return /* @__PURE__ */ jsxs(
+    Box,
+    {
+      flexDirection: "column",
+      marginBottom: 1,
+      children: [
+        /* @__PURE__ */ jsxs(Text, { children: [
+          statusIcon,
+          " Locale ",
+          locale.locale,
+          ": ",
+          locale.completed,
+          "/",
+          totalKeys,
+          " keys (",
+          locale.percentage,
+          "%) ",
+          statusIcon
+        ] }),
+        locale.missing.length > 0 && /* @__PURE__ */ jsxs(
+          Box,
+          {
+            flexDirection: "column",
+            marginLeft: 2,
+            children: [
+              /* @__PURE__ */ jsxs(Text, { color: "red", children: [
+                "\u274C Missing keys (",
+                locale.missing.length,
+                "):"
+              ] }),
+              /* @__PURE__ */ jsx(MissingKeysView, { missing: locale.missing })
+            ]
+          }
+        ),
+        locale.untranslated.length > 0 && /* @__PURE__ */ jsxs(
+          Box,
+          {
+            flexDirection: "column",
+            marginLeft: 2,
+            children: [
+              /* @__PURE__ */ jsxs(Text, { color: "yellow", children: [
+                "\u{1F504} Untranslated values (",
+                locale.untranslated.length,
+                "):"
+              ] }),
+              locale.untranslated.slice(0, 5).map(([key]) => /* @__PURE__ */ jsxs(
+                Text,
+                {
+                  color: "gray",
+                  children: [
+                    " ",
+                    "- ",
+                    key,
+                    ': "',
+                    enFlat[key],
+                    '"'
+                  ]
+                },
+                key
+              )),
+              locale.untranslated.length > 5 && /* @__PURE__ */ jsxs(Text, { color: "gray", children: [
+                " ",
+                "... and ",
+                locale.untranslated.length - 5,
+                " more"
+              ] })
+            ]
+          }
+        ),
+        locale.extra.length > 0 && /* @__PURE__ */ jsxs(
+          Box,
+          {
+            flexDirection: "column",
+            marginLeft: 2,
+            children: [
+              /* @__PURE__ */ jsxs(Text, { color: "cyan", children: [
+                "\u26A0\uFE0F Extra keys (",
+                locale.extra.length,
+                "):"
+              ] }),
+              /* @__PURE__ */ jsxs(Text, { color: "gray", children: [
+                " ",
+                locale.extra.map(([k]) => k).join(", ")
+              ] })
+            ]
+          }
+        )
+      ]
+    }
+  );
+};
+const MissingKeysView = ({
+  missing
+}) => {
+  const keysBySection = /* @__PURE__ */ new Map();
+  missing.forEach(([key]) => {
+    const section = key.split(".").slice(0, 2).join(".");
+    if (!keysBySection.has(section)) {
+      keysBySection.set(section, []);
+    }
+    keysBySection.get(section).push(key);
+  });
+  return /* @__PURE__ */ jsx(Box, { flexDirection: "column", children: Array.from(keysBySection.entries()).map(([section, keys]) => {
+    if (keys.length === 1) {
+      return /* @__PURE__ */ jsxs(
+        Text,
+        {
+          color: "gray",
+          children: [
+            " ",
+            "- ",
+            keys[0]
+          ]
+        },
+        section
+      );
+    } else if (keys.length <= 3) {
+      return /* @__PURE__ */ jsx(
+        Box,
+        {
+          flexDirection: "column",
+          children: keys.map((key) => /* @__PURE__ */ jsxs(
+            Text,
+            {
+              color: "gray",
+              children: [
+                " ",
+                "- ",
+                key
+              ]
+            },
+            key
+          ))
+        },
+        section
+      );
+    } else {
+      return /* @__PURE__ */ jsxs(
+        Box,
+        {
+          flexDirection: "column",
+          children: [
+            /* @__PURE__ */ jsxs(Text, { color: "gray", children: [
+              " ",
+              "- ",
+              section,
+              ".* (",
+              keys.length,
+              " keys missing)"
+            ] }),
+            /* @__PURE__ */ jsxs(Text, { color: "gray", children: [
+              " ",
+              "Examples:",
+              " ",
+              keys.slice(0, 2).map((k) => k.split(".").pop()).join(", "),
+              "..."
+            ] })
+          ]
+        },
+        section
+      );
+    }
+  }) });
+};
+
+async function getLocaleStats(locale, enFlat) {
+  const localeDir = join(LOCALE_DIR, locale);
+  const jsonPath = join(localeDir, "flat.json");
+  if (!existsSync(jsonPath)) {
+    console.warn(`\u26A0\uFE0F Warning: ${jsonPath} not found
+`);
+    process.exit(1);
+  }
+  const enMap = new Map(Object.entries(enFlat));
+  const totalKeys = enMap.size;
+  try {
+    const localeFlatData = JSON.parse(
+      readFileSync(jsonPath, "utf8")
+    );
+    const localeFlatMap = new Map(Object.entries(localeFlatData));
+    const missingData = Array.from(enMap).filter(
+      ([key, _]) => !localeFlatMap.has(key)
+    );
+    const extraData = Array.from(localeFlatMap).filter(
+      ([key, _]) => !enMap.has(key)
+    );
+    const localeActualMap = Array.from(localeFlatMap).filter(
+      ([key, _]) => enMap.has(key)
+    );
+    const untranslatedEntries = Array.from(localeActualMap).filter(
+      ([key, value]) => value === enFlat[key] || [value, enFlat[key]].every(Array.isArray) && JSON.stringify(value) === JSON.stringify(enFlat[key])
+    );
+    const completed = totalKeys - missingData.length - untranslatedEntries.length;
+    const percentage = Math.round(completed / totalKeys * 100 * 10) / 10;
+    return {
+      locale,
+      completed,
+      missing: missingData,
+      extra: extraData,
+      untranslated: untranslatedEntries,
+      percentage
+    };
+  } catch (error) {
+    console.error(`\u274C Error validating ${jsonPath}:`, error);
+    process.exit(1);
+  }
+}
+
+async function getData(locale) {
+  const enFlatPath = join(LOCALE_DIR, "en", "flat.json");
+  if (!existsSync(enFlatPath)) {
+    console.error("\u274C Error: en/flat.json not found");
+    process.exit(1);
+  }
+  const enFlat = JSON.parse(
+    readFileSync(enFlatPath, "utf8")
+  );
+  const enMap = new Map(Object.entries(enFlat));
+  enMap.size;
+  const locales = locale ? from([locale]) : from(readdirSync(LOCALE_DIR, { withFileTypes: true })).pipe(
+    filter((dirent) => dirent.isDirectory() && dirent.name !== "en"),
+    map((dirent) => dirent.name)
+  );
+  const results = { locales: [], enFlat };
+  for (const locale2 of locales) {
+    const stat = await getLocaleStats(locale2, enFlat);
+    results.locales.push(stat);
+  }
+  return results;
+}
+
+async function checkAllLocales() {
+  const data = await getData();
+  render(/* @__PURE__ */ jsx(AllLocalesView, { data }));
+}
+
+const LocaleView = ({ data }) => {
+  const { locales, enFlat } = data;
+  const totalKeys = Object.keys(enFlat).length;
+  if (locales.length === 0) {
+    return /* @__PURE__ */ jsx(Text, { color: "red", children: "\u274C No locale data found" });
+  }
+  const locale = locales[0];
+  const statusIcon = locale.percentage >= 80 ? "\u2705" : locale.percentage >= 50 ? "\u{1F7E1}" : "\u{1F534}";
+  return /* @__PURE__ */ jsxs(Box, { flexDirection: "column", children: [
+    /* @__PURE__ */ jsxs(Text, { children: [
+      statusIcon,
+      " Locale ",
+      locale.locale,
+      ": ",
+      locale.completed,
+      "/",
+      totalKeys,
+      " keys (",
+      locale.percentage,
+      "%) ",
+      statusIcon
+    ] }),
+    locale.missing.length > 0 && /* @__PURE__ */ jsxs(
+      Box,
+      {
+        flexDirection: "column",
+        marginTop: 1,
+        children: [
+          /* @__PURE__ */ jsxs(Text, { color: "red", children: [
+            "\u274C Missing keys (",
+            locale.missing.length,
+            "):"
+          ] }),
+          locale.missing.slice(0, 10).map(([key]) => /* @__PURE__ */ jsxs(
+            Text,
+            {
+              color: "gray",
+              children: [
+                " ",
+                "- ",
+                key
+              ]
+            },
+            key
+          )),
+          locale.missing.length > 10 && /* @__PURE__ */ jsxs(Text, { color: "gray", children: [
+            " ",
+            "... and ",
+            locale.missing.length - 10,
+            " more"
+          ] })
+        ]
+      }
+    ),
+    locale.untranslated.length > 0 && /* @__PURE__ */ jsxs(
+      Box,
+      {
+        flexDirection: "column",
+        marginTop: 1,
+        children: [
+          /* @__PURE__ */ jsxs(Text, { color: "yellow", children: [
+            "\u{1F504} Untranslated values (",
+            locale.untranslated.length,
+            "):"
+          ] }),
+          locale.untranslated.slice(0, 5).map(([key]) => /* @__PURE__ */ jsxs(
+            Text,
+            {
+              color: "gray",
+              children: [
+                " ",
+                "- ",
+                key,
+                ': "',
+                enFlat[key],
+                '"'
+              ]
+            },
+            key
+          )),
+          locale.untranslated.length > 5 && /* @__PURE__ */ jsxs(Text, { color: "gray", children: [
+            " ",
+            "... and ",
+            locale.untranslated.length - 5,
+            " more"
+          ] })
+        ]
+      }
+    ),
+    locale.extra.length > 0 && /* @__PURE__ */ jsxs(
+      Box,
+      {
+        flexDirection: "column",
+        marginTop: 1,
+        children: [
+          /* @__PURE__ */ jsxs(Text, { color: "cyan", children: [
+            "\u26A0\uFE0F Extra keys (",
+            locale.extra.length,
+            "):"
+          ] }),
+          /* @__PURE__ */ jsxs(Text, { color: "gray", children: [
+            " ",
+            locale.extra.map(([k]) => k).join(", ")
+          ] })
+        ]
+      }
+    ),
+    /* @__PURE__ */ jsx(Box, { marginTop: 1, children: /* @__PURE__ */ jsxs(Text, { children: [
+      "\u{1F4CA} Summary: ",
+      locale.locale,
+      ": ",
+      locale.completed,
+      "/",
+      totalKeys,
+      " ",
+      "(",
+      locale.percentage,
+      "%)"
+    ] }) })
+  ] });
+};
+
+async function checkOneLocale(locale = "ru") {
+  const data = await getData(locale);
+  render(/* @__PURE__ */ jsx(LocaleView, { data }));
+}
+
+const Error$1 = ({ message, exitApp = true }) => {
+  const { exit: closeApp } = useApp();
+  const exit = useCallback(() => {
+    process.exit(1);
+    closeApp();
+  }, []);
+  useEffect(() => {
+    if (exitApp) {
+      setTimeout(() => exit(), 100);
+    }
+  }, [exit, exitApp]);
+  return /* @__PURE__ */ jsxs(Text, { color: "red", children: [
+    "ERROR: ",
+    message
+  ] });
+};
+
+const Success = ({ message }) => {
+  const lines = Array.isArray(message) ? message : [message];
+  return /* @__PURE__ */ jsx(Box, { flexDirection: "column", children: lines.map((line, index) => /* @__PURE__ */ jsxs(
+    Text,
+    {
+      color: "green",
+      children: [
+        index === 0 ? "SUCCESS: " : "",
+        line
+      ]
+    },
+    index
+  )) });
+};
+
+async function getObjectFromTs(tsPath) {
+  const content = readFileSync(tsPath, "utf8");
+  const objectRegex = /const\s+\w+\s*:\s*[^=]+=\s*(\{[\s\S]*?\});/;
+  const match = content.match(objectRegex);
+  if (!match) {
+    throw new Error(`Object declaration not found in: ${tsPath}`);
+  }
+  try {
+    const objectString = match[1];
+    return eval(`(${objectString})`);
+  } catch (err) {
+    throw new Error(`Failed to parse object: ${err.message}`);
+  }
+}
+
+function nestToFlat(nested) {
+  const result = {};
+  function traverse(obj, path = "") {
+    for (const [key, value] of Object.entries(obj)) {
+      const currentPath = path ? `${path}.${key}` : key;
+      if (Array.isArray(value)) {
+        result[currentPath] = value;
+      } else if (typeof value === "object" && value !== null) {
+        traverse(value, currentPath);
+      } else if (typeof value === "string") {
+        result[currentPath] = value;
+      }
+    }
+  }
+  traverse(nested);
+  return result;
+}
+
+function sortObjectKeys(obj) {
+  if (Array.isArray(obj)) {
+    return obj;
+  }
+  if (obj !== null && typeof obj === "object") {
+    const sorted = {};
+    Object.keys(obj).sort().forEach((key) => {
+      sorted[key] = sortObjectKeys(obj[key]);
+    });
+    return sorted;
+  }
+  return obj;
+}
+
+async function flat(locale) {
+  const tsPath = join(LOCALE_DIR, `${locale}/index.ts`);
+  const jsonPath = join(LOCALE_DIR, `${locale}/flat.json`);
+  if (!existsSync(tsPath)) {
+    await render(/* @__PURE__ */ jsx(Error$1, { message: `${tsPath} not found` })).waitUntilExit();
+  }
+  try {
+    const nested = await getObjectFromTs(tsPath);
+    const sortedFlat = sortObjectKeys(nestToFlat(nested));
+    writeFileSync(jsonPath, JSON.stringify(sortedFlat, null, 4));
+    render(/* @__PURE__ */ jsx(Success, { message: `Generated ${jsonPath}` }));
+  } catch (error) {
+    render(
+      /* @__PURE__ */ jsx(Error$1, { message: `Failed to process ${locale}: ${error.message}` })
+    );
+  }
+}
+
+function init() {
+  if (!existsSync(LANG_DIR)) {
+    mkdirSync(LANG_DIR, { recursive: true });
+  }
+  if (!existsSync(TYPES_DIR)) {
+    mkdirSync(TYPES_DIR, { recursive: true });
+  }
+  if (!existsSync(LOCALE_DIR)) {
+    mkdirSync(LOCALE_DIR, { recursive: true });
+    mkdirSync(join(LOCALE_DIR, "en"));
+    writeFileSync(join(LOCALE_DIR, "en", "flat.json"), "");
+  }
+  if (!existsSync(SCHEMA_FILE)) {
+    const interfaceContent = ``;
+    writeFileSync(SCHEMA_FILE, interfaceContent);
+  }
+  render(
+    /* @__PURE__ */ jsx(
+      Success,
+      {
+        message: [
+          "Lang structure created successfully:",
+          "  ./src/lang/",
+          "  \u251C\u2500\u2500 types/",
+          "  \u2502   \u2514\u2500\u2500 interfaces.ts",
+          "  \u2514\u2500\u2500 locale/",
+          "      \u2514\u2500\u2500 en/",
+          "          \u2514\u2500\u2500 flat.json"
+        ]
+      }
+    )
+  );
 }
 
 function flatToNest(flat) {
@@ -1535,6 +1535,78 @@ export default Locale;`;
   }
 }
 
+function processLocale(base, other, options) {
+  const baseKeys = new Set(Object.keys(base));
+  const otherKeys = Object.keys(other);
+  for (const key of baseKeys) {
+    if (!other[key]) {
+      if (options.dryRun) {
+        console.log(`DRY RUN: found missed key ${key}. Adding...`);
+      } else {
+        other[key] = base[key];
+      }
+    }
+  }
+  for (const key of otherKeys) {
+    if (!baseKeys.has(key)) {
+      if (options.dryRun) {
+        console.log(`DRY RUN: found mismatch key ${key}. Removing...`);
+      } else {
+        delete other[key];
+      }
+    }
+  }
+}
+async function sync(options) {
+  const enPath = join(LOCALE_DIR, "en");
+  if (!existsSync(enPath)) {
+    render(/* @__PURE__ */ jsx(Error$1, { message: "En path is not exist!" }));
+  }
+  const enJsonPath = join(enPath, "flat.json");
+  if (!existsSync(enJsonPath)) {
+    render(/* @__PURE__ */ jsx(Error$1, { message: "En json path is not exist!" }));
+  }
+  const enLocale = JSON.parse(readFileSync(enJsonPath, "utf8"));
+  const otherLocales = glob.sync("./src/lang/locale/!(en)/flat.json");
+  let synced = 0;
+  let errors = 0;
+  if (options.dryRun) {
+    console.log("DRY RUN: Would sync locales...");
+  }
+  for (const localePath of otherLocales) {
+    const localeName = basename(dirname(localePath));
+    try {
+      const locale = JSON.parse(
+        readFileSync(localePath, "utf8")
+      );
+      if (options.dryRun) {
+        console.log(`DRY RUN: processing locale ${localeName}...`);
+      }
+      processLocale(enLocale, locale, options);
+      if (!options.dryRun) {
+        writeFileSync(localePath, JSON.stringify(locale, null, 2));
+      }
+      synced++;
+    } catch (err) {
+      render(
+        /* @__PURE__ */ jsx(
+          Error$1,
+          {
+            message: `Locale ${localeName} is not a valid json: ${err.message}`
+          }
+        )
+      );
+      errors++;
+    }
+  }
+  if (errors === 0) {
+    const message = options.dryRun ? `DRY RUN: Would sync ${synced} locales` : `Synced ${synced} locales`;
+    render(/* @__PURE__ */ jsx(Success, { message }));
+  } else {
+    render(/* @__PURE__ */ jsx(Error$1, { message: `${synced} synced, ${errors} failed` }));
+  }
+}
+
 async function template(locale) {
   const enLocaleDir = join(LOCALE_DIR, "en");
   const enJsonPath = join(enLocaleDir, "flat.json");
@@ -1620,7 +1692,10 @@ program.command("flat").argument("<locale>", "locale code (e.g., en, ru, de)").d
 program.command("template").argument("<locale>", "new locale code (e.g., de, fr, es)").description("Create new locale template from en/flat.json").action(template);
 program.command("check-locale").description("Check your locale status against en/flat.json").argument("<locale>", "Check your translation").action(checkOneLocale);
 program.command("check-locales").description("Check all locales status against en/flat.json").action(checkAllLocales);
-program.command("keys-stats").description(
+program.command("analyze-keys").description(
   "Show detailed statistics of translation keys across locales, including total, missing, and unused keys"
-).action(keysStats);
+).action(analyzeKeys);
+program.command("sync").description(
+  "Sync all locales with base locale (en): add missing keys, remove unused"
+).option("-d, --dry-run", "Show what would be changed without applying").action(sync);
 program.parse();

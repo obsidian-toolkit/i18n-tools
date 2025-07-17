@@ -1,4 +1,4 @@
-import { LocaleTransaction } from '../commands/keyStats/locale-transaction';
+import { LocaleTransaction } from '../commands/analyze-keys/locale-transaction';
 import { FlatObject, Key } from './definitions';
 
 export interface LocaleStat {

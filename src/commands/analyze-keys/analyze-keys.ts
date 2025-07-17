@@ -1,5 +1,5 @@
 import { showStatsMenu } from './KeyStatsView';
 
-export async function keysStats() {
+export async function analyzeKeys() {
     showStatsMenu();
 }
