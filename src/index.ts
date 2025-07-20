@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import { findUpSync } from 'find-up-simple';
+import path from 'path';
 
 import { analyzeKeys } from './commands/analyze-keys/analyze-keys';
 import { checkAllLocales } from './commands/check-locales/checkAllLocales';
@@ -12,12 +13,12 @@ import { sync } from './commands/sync';
 import { template } from './commands/template';
 import { updateAllNested } from './commands/updateAllNested';
 
-const root = findUpSync('manifest.json');
+const root = findUpSync('package.json');
 
 if (!root) {
     process.exit(1);
 } else {
-    process.chdir(root);
+    process.chdir(path.dirname(root));
 }
 
 const program = new Command();

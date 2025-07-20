@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import { findUpSync } from 'find-up-simple';
+import path, { join, basename, dirname } from 'path';
 import { jsx, jsxs } from 'react/jsx-runtime';
 import React, { useCallback, useRef, useState, useEffect, useMemo } from 'react';
 import highlight from 'cli-highlight';
@@ -9,7 +10,6 @@ import { existsSync, readFileSync, writeFileSync, readdirSync, mkdirSync } from 
 import { glob } from 'glob';
 import { from, concat } from 'ix/iterable';
 import { flatMap, filter, map, tap } from 'ix/iterable/operators';
-import path, { join, basename, dirname } from 'path';
 import { exit } from 'process';
 import { Project, ModuleKind, ScriptTarget, SyntaxKind } from 'ts-morph';
 
@@ -1660,11 +1660,11 @@ async function updateAllNested() {
   }
 }
 
-const root = findUpSync("manifest.json");
+const root = findUpSync("package.json");
 if (!root) {
   process.exit(1);
 } else {
-  process.chdir(root);
+  process.chdir(path.dirname(root));
 }
 const program = new Command();
 program.name("i18n-tool").description("Locale management tool for translations").version("0.1.0");
