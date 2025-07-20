@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
+import { findUpSync } from 'find-up-simple';
 import { jsx, jsxs } from 'react/jsx-runtime';
 import React, { useCallback, useRef, useState, useEffect, useMemo } from 'react';
 import highlight from 'cli-highlight';
@@ -11,8 +12,6 @@ import { flatMap, filter, map, tap } from 'ix/iterable/operators';
 import path, { join, basename, dirname } from 'path';
 import { exit } from 'process';
 import { Project, ModuleKind, ScriptTarget, SyntaxKind } from 'ts-morph';
-import chalk from 'chalk';
-import path$1 from 'node:path';
 
 const LANG_DIR = "./src/lang";
 const LOCALE_DIR = join(LANG_DIR, "locale");
@@ -1661,26 +1660,12 @@ async function updateAllNested() {
   }
 }
 
-function setRootFolder() {
-  let current = process.cwd();
-  while (true) {
-    const pkg = path$1.join(current, "manifest.json");
-    if (existsSync(pkg)) {
-      process.chdir(current);
-      return current;
-    }
-    const parent = path$1.dirname(current);
-    if (parent === current) {
-      console.log(
-        chalk.red("package.json not found in any parent directories")
-      );
-      process.exit(1);
-    }
-    current = parent;
-  }
+const root = findUpSync("manifest.json");
+if (!root) {
+  process.exit(1);
+} else {
+  process.chdir(root);
 }
-
-setRootFolder();
 const program = new Command();
 program.name("i18n-tool").description("Locale management tool for translations").version("0.1.0");
 program.command("init").description("Init base locale structure").action(init);
